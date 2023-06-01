@@ -1,0 +1,652 @@
+---
+title: "Fake news"
+author: "Niveditha Mangala Venkatesha"
+date: "24/04/2022"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Importing Data of fake new, true new and news articles
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse) 
+
+FakeNews <- read.csv("C:/Users/nived/Desktop/Masters/Statistical learning/Project/Fake.csv")
+FakeNews <- as.data.frame(FakeNews) %>% mutate(title = as.character(title), text = as.character(text), date = as.character(date), subject = as.character(subject))
+
+TrueNews <- True <- read.csv("C:/Users/nived/Desktop/Masters/Statistical learning/Project/True.csv")
+TrueNews <- as.data.frame(TrueNews) %>% mutate(title = as.character(title), text = as.character(text), date = as.character(date), subject = as.character(subject)) 
+
+news_articles <- read.csv("C:/Users/nived/Desktop/Masters/Statistical learning/Project/news_articles.csv")
+news_articles <- as.data.frame(news_articles) %>% mutate(title = as.character(title_without_stopwords), text = as.character(text_without_stopwords), published = as.character(published), label = as.character(label))
+```
+
+Data Exploration & Preparation
+Fake and True Data sets
+
+```{r}
+as_tibble(head(FakeNews))
+as_tibble(head(TrueNews))
+nrow(FakeNews)
+nrow(TrueNews)
+```
+
+Subject and date are not needed for the analysis so will be removed
+
+```{r}
+FakeNews <- subset(FakeNews, select = -c(date,subject) )
+TrueNews <- subset(TrueNews, select = -c(date,subject) )
+```
+
+News articles Second Data Set
+
+```{r}
+as_tibble(head(news_articles))
+news_articles %>% group_by(type) %>% summarize(NoArticles = n())
+```
+
+Will only add the true articles from Data set 2 and ensure that there is an equal amount of Fake and True articles. So that there is no bias when predicting. Changing the label of Real to True articles and removing all other columns except title & text. 
+
+```{r}
+news_articles <- subset(news_articles, select = c(title_without_stopwords,text_without_stopwords,label) )
+news_articles <- news_articles %>% rename(title = title_without_stopwords, text = text_without_stopwords, type = label)
+
+TrueNews2 <- filter(news_articles, type == 'Real')
+TrueNews2 <- subset(TrueNews2, select = -c(type) )
+```
+
+Concatenating TrueNews2 with TrueNews
+
+```{r}
+TrueNews <- rbind(TrueNews, TrueNews2)
+
+FakeNews <- FakeNews[1:22218,]
+nrow(FakeNews)
+nrow(TrueNews)
+
+# Removed unused dataframes
+rm(TrueNews2, news_articles)
+```
+
+Now both fakenews and truenews has same number of data of 22218
+
+Analysis of the words: Finding the most common words in fake & true. Adding title & text to same field
+
+```{r warning=FALSE}
+library("SnowballC")
+library("wordcloud")
+library("RColorBrewer")
+library("syuzhet")
+library("ggplot2")
+library(tm)
+
+FakeNews$text <- with(FakeNews, paste(title, text))
+TrueNews$text <- with(TrueNews, paste(title, text))
+```
+
+Loading the fake news data as a corpus: Fake news word cloud
+
+```{r}
+fake_corpus = VCorpus(VectorSource(FakeNews$text))
+```
+
+Converting the text to lower case
+
+```{r}
+fake_corpus = tm_map(fake_corpus, content_transformer(tolower))
+```
+
+Removing numbers
+
+```{r}
+fake_corpus = tm_map(fake_corpus, removeNumbers)
+```
+
+Removing punctuation
+
+```{r}
+fake_corpus = tm_map(fake_corpus, removePunctuation)
+```
+
+Removing English common stop words
+
+```{r}
+fake_corpus = tm_map(fake_corpus, removeWords, stopwords())
+```
+
+Eliminating extra white spaces
+
+```{r}
+fake_corpus = tm_map(fake_corpus, stripWhitespace)
+```
+
+Text stemming - which reduces words to their root form. 
+
+```{r Fake News Word Cloud, echo=FALSE, fig.align = 'center'}
+fake_corpus = tm_map(fake_corpus, stemDocument)
+
+fake_dtm = DocumentTermMatrix(fake_corpus)
+fake_dtm = removeSparseTerms(fake_dtm, 0.999)
+fake_dataset = as.data.frame(as.matrix(fake_dtm))
+
+fake_v = sort(colSums(fake_dataset),decreasing=TRUE)
+myNames = names(fake_v)
+fake_words = data.frame(word=myNames,freq=fake_v,type='fake')
+
+wordcloud(words = fake_words$word, freq = fake_words$freq, min.freq = 5, max.words=100, random.order=FALSE, rot.per=0.40, colors=brewer.pal(8, "Dark2"))
+```
+
+```{r results = 'asis', echo=FALSE}
+# Display the top 5 most frequent words
+knitr::kable(head(fake_words, 5), caption = "Fake News: Top5 most Frequent words")
+```
+
+Loading the true news data as a corpus: True news word cloud
+
+```{r}
+true_corpus = VCorpus(VectorSource(TrueNews$text))
+```
+
+Converting the text to lower case
+
+```{r}
+true_corpus = tm_map(true_corpus, content_transformer(tolower))
+```
+
+Removing numbers
+
+```{r}
+true_corpus = tm_map(true_corpus, removeNumbers)
+```
+
+Removing punctuation
+
+```{r}
+true_corpus = tm_map(true_corpus, removePunctuation)
+```
+
+Removing Stop words
+
+```{r}
+true_corpus = tm_map(true_corpus, removeWords, stopwords())
+```
+
+Eliminating extra white spaces
+
+```{r}
+true_corpus = tm_map(true_corpus, stripWhitespace)
+```
+
+Text stemming
+
+```{r warning=FALSE}
+true_corpus = tm_map(true_corpus, stemDocument)
+
+true_dtm = DocumentTermMatrix(true_corpus)
+true_dtm = removeSparseTerms(true_dtm, 0.999)
+true_dataset = as.data.frame(as.matrix(true_dtm))
+
+#wordCloud
+library(wordcloud)
+
+true_v = sort(colSums(true_dataset),decreasing=TRUE)
+myNames_true = names(true_v)
+true_words = data.frame(word=myNames_true,freq=true_v,type='true')
+
+wordcloud(words = true_words$word, freq = fake_words$freq, min.freq = 5,
+          max.words=100, random.order=FALSE, rot.per=0.40, 
+          colors=brewer.pal(8, "Dark2"))
+
+Words <- rbind(fake_words, true_words)
+
+# Display the top 5 most frequent words
+head(fake_words, 5)
+head(true_words, 5)
+```
+
+```{r results = 'asis', echo=FALSE}
+knitr::kable(head(true_words, 5), caption = "True News: Top5 most Frequent words")
+```
+
+Data Transformation
+
+A fake or truth indicator added for the prediction
+
+```{r}
+FakeNews$Type <- c('Fake')
+TrueNews$Type <- c('True')
+```
+
+Joining Fake & True Data to make a full data set.
+
+```{r}
+NewsData <- rbind(FakeNews, TrueNews)
+```
+
+Checking for any Null Values
+
+```{r}
+anyNA(NewsData)
+```
+True Check which columns contain Null
+
+```{r}
+colnames(NewsData)[colSums(is.na(NewsData)) > 0]
+```
+
+we are removing the NA values 
+
+```{r}
+NewsData <- na.omit(NewsData)
+nrow(NewsData)
+ncol(NewsData)
+```
+
+Adding an ID 
+
+```{r}
+NewsData$ID <-seq_len(nrow(NewsData))
+NewsData <- select(NewsData, ID, everything())
+```
+
+Removing 'Title' as we have already added it to the text field
+
+```{r}
+NewsData <- subset(NewsData, select = -c(title) )
+```
+
+Adding number of sentences per article 
+
+```{r warning=FALSE}
+library(quanteda)
+NewsData$No_of_sentences <- nsentence(NewsData$text)
+```
+
+Adding Number of characters per article
+
+```{r}
+NewsData$TextLength <- nchar(NewsData$text)
+summary(NewsData$TextLength)
+TextLength <- NewsData$TextLength
+```
+
+Using Sapply function to calculate number of punctuation marks
+
+```{r}
+NewsData$No_of_excl <- sapply(NewsData$text, function(x) length(unlist(strsplit(as.character(x), "\\!+"))))
+
+NewsData$No_of_question <- sapply(NewsData$text, function(x) length(unlist(strsplit(as.character(x), "\\?+"))))
+```
+
+Counting of exclamations & question marks in fake and true news avg in Fake and True
+
+```{r}
+Punctuation <-NewsData %>% group_by(Type) %>% summarise(Avg_Excl=round(mean(No_of_excl),3),
+                                                        Avg_Ques=round(mean(No_of_question),3))
+
+Punctuation <- Punctuation %>% gather("Punctuation", "Avg_per_Article", -Type)
+
+ggplot(Punctuation, aes(x = Punctuation, y = Avg_per_Article, fill=Type)) + geom_col(position = "dodge") +   geom_text(aes(label=Avg_per_Article), position=position_dodge(width=0.9), vjust=-0.25)
+
+#removing punctuation
+NewsData$text<- gsub('[[:punct:]]', '', NewsData$text)
+```
+
+Make text lower case
+
+```{r}
+NewsData$text <- tolower(NewsData$text)
+```
+
+From the word cloud of Fake News - Calculating Number of Times 'Trump' Appears 
+
+```{r}
+NewsData$No_of_Wordtrump <- str_count(NewsData$text, "trump")
+```
+
+From the word cloud of True News - Calculatin Number of Times 'said' Appears 
+
+```{r}
+NewsData$No_of_Wordsaid <- str_count(NewsData$text, "said")
+```
+
+View the all measures by type
+
+```{r}
+Data_measures <- NewsData %>% group_by(Type) %>%
+  summarize(No_articles = n(),
+            Avg_no_Sentences = mean(No_of_sentences),
+            Avg_TextLength = mean(TextLength),
+            Avg_no_excl = mean(No_of_excl),
+            Avg_no_question = mean(No_of_question),
+            Avg_no_trump = mean(No_of_Wordtrump),
+            Avg_no_said = mean(No_of_Wordsaid))
+```
+
+```{r results = 'asis', echo=FALSE}
+knitr::kable(Data_measures, caption = "Data Measures by article type")
+```
+
+Correlations
+
+```{r}
+library("ggplot2")
+#library(gridExtra)
+
+NewsData  %>%  ggplot(aes(No_of_sentences, No_of_question, color=Type)) + geom_point() + geom_smooth() + scale_x_continuous(labels = scales::comma)+ ggtitle("TextLength, question")
+
+NewsData  %>%  ggplot(aes(No_of_sentences, No_of_excl, color=Type)) + geom_point() + geom_smooth() + scale_x_continuous(labels = scales::comma)+ ggtitle("TextLength, excl")
+```
+
+Remove Stop words
+
+```{r}
+StopWords <- removeWords(NewsData$text, stopwords("en"))
+StopWords <- data.frame(StopWords)
+StopWords$ID <- seq_len(nrow(StopWords))
+StopWords <- select(StopWords, ID, everything())
+NewsData <- left_join(NewsData,StopWords,by="ID")
+NewsData <- NewsData %>% rename(NoStop_text = StopWords)
+```
+
+After removing the stop words, there are many white spaces left between words so will be removing the duplicate white spaces between the words.
+
+```{r}
+NewsData$NoStop_text <- str_replace_all(NewsData$NoStop_text, fixed("  "), " ")
+```
+
+Adding number of words per article after removing Stop words
+
+```{r}
+NewsData$No_of_words <- sapply(strsplit(NewsData$NoStop_text, " "), length)
+```
+
+Sentiment Analysis: The study of extracted information to identify reactions, attitudes, context and emotions.
+
+```{r}
+emotion <- get_nrc_sentiment(as.character(NewsData$NoStop_text))
+```
+
+Taking only ID and Fake Column and combine with emotion
+
+```{r}
+IDFAke <- NewsData[c(1,3)]
+```
+
+Taking only the emotions - negative & positive will be used in actual News data set
+
+```{r}
+emotionDF <- cbind(NewsData[c(3)],emotion[c(1,2,3,4,5,6,7,8)])
+emotionDF2 <- cbind(NewsData[c(3)],emotion[c(9,10)])
+
+emotionGraph <- emotionDF %>% group_by(Type) %>%
+  summarize_all((mean))
+emotionGraph2 <- emotionDF2 %>% group_by(Type) %>%
+  summarize_all((mean))
+
+emotionGraph <- emotionGraph %>% gather("emotion", "Avg_No_of_Words", -Type)
+emotionGraph2 <- emotionGraph2 %>% gather("emotion", "Avg_No_of_Words", -Type)
+```
+
+Creating graph of Emotions Fake vs True Words
+
+```{r}
+ggplot(emotionGraph, aes(x = emotion, y = Avg_No_of_Words, fill=Type)) + geom_col(position = "dodge")
+ggplot(emotionGraph2, aes(x = emotion, y = Avg_No_of_Words, fill=Type)) + geom_col(position = "dodge")
+```
+
+Taking only negative and positive and trust for the analysis
+
+```{r}
+emotionNegPos <- emotion[c(8,9,10)]
+emotionNegPos$ID <- seq_len(nrow(emotion))
+emotionNegPos <- select(emotionNegPos, ID, everything())
+
+NewsData<-left_join(NewsData,emotionNegPos)
+```
+
+View the all additional measures by type
+
+```{r}
+Data_measures <- NewsData %>% group_by(Type) %>% summarize(No_articles = n(), Avg_no_Sentences = mean(No_of_sentences), Avg_TextLength = mean(TextLength), Max_TextLength = max(TextLength), Avg_no_excl = mean(No_of_excl), Avg_no_question = mean(No_of_question), )
+
+Data_measures2 <- NewsData %>% group_by(Type) %>% summarize(No_articles = n(), Avg_No_trump = mean(No_of_Wordtrump), Avg_No_said = mean(No_of_Wordsaid), Avg_No_trust = mean(trust), Avg_No_positive = mean(positive), Avg_No_negative = mean(negative))
+
+Dataset <- NewsData
+```
+
+```{r}
+knitr::kable(Data_measures, caption = "Data Measures by article type")
+knitr::kable(Data_measures2, caption = "Data Measures by article type")
+```
+
+Building model and training
+
+```{r}
+anyNA(NewsData)
+NewsData <- subset(Dataset, select = -c(ID,text, NoStop_text))
+```
+
+Encoding categorical data
+
+```{r}
+NewsData$Type = factor(NewsData$Type, levels= c('Fake','True'), labels= c(1,0))
+```
+
+Splitting the dataset into the Training set and Test set
+
+```{r warning=FALSE}
+library(caTools)
+library(caret)
+
+set.seed(123)
+
+split = sample.split(NewsData$Type, SplitRatio = 0.8)
+train_set = subset(NewsData, split == TRUE)
+test_set = subset(NewsData, split == FALSE)
+```
+
+Scaling
+
+```{r}
+train_set[,2:11] = scale(train_set[,2:11])
+test_set[,2:11] = scale(test_set[,2:11])
+```
+
+MODEL 1 - Logistic Regression
+
+Fitting Logistic Regression to the Training set
+
+```{r}
+classifier = glm(formula = Type ~ No_of_sentences + TextLength, family = binomial, data = train_set)
+classifier
+plot(classifier, 1)
+
+# Predicting the Test set results
+prob_pred = predict(classifier, type = "response", newdata = test_set[2:3])
+y_pred = ifelse(prob_pred > 0.5, "1", "0")
+y_pred <-as.factor(y_pred)
+
+# Making the Confusion Matrix
+require(caret)   
+
+cm = table(test_set[, 1], y_pred > 0.5)
+cm = table(test_set[, 1], y_pred )
+cm<-confusionMatrix(test_set[, 1] ,y_pred )
+cm<-confusionMatrix(data=test_set$Type, reference=y_pred)
+test = factor(test_set$Type)
+cm
+
+table(y_pred, test_set[["Type"]])
+
+Accuracy<-round(cm$overall[1],2)
+Accuracy
+```
+
+We can see from the graph that this is not a very accurate prediction with an outcome using only 2 fields No. of Sentences and Text Length, with the accuracy of 45%, lets see how this changes when adding more measures for prediction.
+
+
+MODEL 2 - Logistic Regression 2 : No of Words & Sentiment
+
+Using Logistic Regression again with the sentiment of the words, fitting Logistic Regression to the Training set
+
+```{r}
+classifier2 = glm(formula = Type ~ No_of_words + trust + negative + positive, family = binomial, data = train_set)
+classifier2
+plot(classifier2, 1)
+```
+
+Predicting the Test set results
+
+```{r warning=FALSE}
+prob_pred2 = predict(classifier2, type = 'response', newdata = test_set[8:11])
+y_pred2 = ifelse(prob_pred2 > 0.5, 1, 0)
+y_pred2 <-as.factor(y_pred2)
+
+# Making the Confusion Matrix
+require(caret)    
+cm<-confusionMatrix(data=y_pred2, 
+                    reference=test_set$Type)
+Accuracy<-cm$overall[1]
+Accuracy
+```
+
+Result is less than previous, so let’s use a different method of classification prediction.
+
+
+MODEL 3 - SUPPORT VECTOR MACHINE
+
+Fitting SVM to the Training set and predicting the test set results
+
+Using the Support Vector Machine starting with only No of sentences and Text Length
+
+```{r}
+library(e1071)
+
+SVM_classifier = svm(formula = Type ~ No_of_sentences + TextLength, data = train_set, type = 'C-classification', kernel = 'linear')
+SVM_classifier
+```
+
+Predicting the Test set results
+
+```{r}
+y_pred = predict(SVM_classifier,  newdata = test_set[2:3])
+
+# Making the Confusion Matrix
+require(caret)    
+cm<-confusionMatrix(data=y_pred, reference=test_set$Type)
+cm
+
+Accuracy <-round(cm$overall[1],2)
+Accuracy
+```
+
+Accuracy is at 55% which is higher than all models of Logistic Regression
+
+
+MODEL 4 - SUPPORT VECTOR MACHINE 2
+
+In this Algorithm we are using all the fields to predict if an article is True or Fake, fitting SVM to the Training set and predicting the test set results
+
+```{r}
+SVM2_classifier = svm(formula = Type ~ .,
+                      data = train_set,
+                      type = 'C-classification',
+                      kernel = 'linear')
+SVM2_classifier
+```
+
+Predicting the Test set results
+
+```{r}
+y_pred = predict(SVM2_classifier,  newdata = test_set[-1])
+
+# Making the Confusion Matrix
+require(caret)    
+cm<-confusionMatrix(data=y_pred, reference=test_set$Type)
+cm
+Accuracy<-round(cm$overall[1],2)
+Accuracy
+```
+
+Accuracy is 85% which is higher for Support Vector Machine learning method using all measures is higher than all models 
+
+
+MODEL 5 - DECISION TREE 
+
+Fitting Decision Tree to the Training set
+
+```{r}
+split = sample.split(NewsData$Type, SplitRatio = 0.8)
+train_set = subset(NewsData, split == TRUE)
+test_set = subset(NewsData, split == FALSE)
+
+library(rpart)
+DT_classifier = rpart(formula = Type ~., data = train_set)
+DT_classifier
+```
+
+Predicting the Test set results
+
+```{r}
+y_pred = predict(DT_classifier, newdata = test_set[-1],type = 'class')
+
+# Making the Confusion Matrix
+require(caret) 
+cm<-confusionMatrix(data=y_pred, reference=test_set$Type)
+cm
+
+Accuracy<-round(cm$overall[1],2)
+Accuracy
+```
+
+Accuracy is 84% for the decision tree model
+
+
+MODEL 6 - RANDOM FOREST 
+
+Splitting the dataset into the Training set and Test set
+
+```{r}
+library(caTools)
+library(caret)
+set.seed(123)
+
+split = sample.split(NewsData$Type, SplitRatio = 0.8)
+train_set = subset(NewsData, split == TRUE)
+test_set = subset(NewsData, split == FALSE)
+# Feature Scaling
+train_set[,2:11] = scale(train_set[,2:11])
+test_set[,2:11] = scale(test_set[,2:11])
+```
+
+Fitting random forest to the Training set and predicting the test set results
+
+```{r warning=FALSE}
+library(randomForest)
+set.seed(123)
+
+RF_classifier = randomForest(x = train_set[-1], y = train_set$Type, mtry = 6, ntree = 500, localImp = TRUE)
+RF_classifier
+
+# Predicting the Test set results
+y_pred = predict(RF_classifier, newdata = test_set[-1])
+
+# Making the Confusion Matrix
+require(caret) 
+cm<-confusionMatrix(data=y_pred, reference=test_set$Type)
+
+Accuracy<-cm$overall[1]
+Accuracy
+```
+
+Accuracy is 90% for random forest model
+
+
+
+
